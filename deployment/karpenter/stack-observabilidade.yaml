@@ -1,0 +1,32 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: stack-observabilidade
+  namespace: default
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: stack-observabilidade
+  template:
+    metadata:
+      labels:
+        app: stack-observabilidade
+    spec:
+      terminationGracePeriodSeconds: 0
+
+      nodeSelector:
+        node-role: system
+
+      tolerations:
+        - key: node-role
+          value: system
+          effect: NoSchedule
+
+      containers:
+        - name: inflate
+          image: public.ecr.aws/eks-distro/kubernetes/pause:3.7
+          resources:
+            requests:
+              cpu: "1"
+              memory: 512Mi

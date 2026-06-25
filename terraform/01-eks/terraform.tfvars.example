@@ -1,0 +1,18 @@
+aws_region  = "us-east-1"
+environment = "dev"
+
+cluster_name    = "eks-cluster-karpenter"
+cluster_version = "1.30"
+
+initial_node_count         = 1
+initial_node_instance_type = "t3.medium"
+
+# Substitua pelo ARN das suas roles na sua conta AWS
+eks_cluster_iam_role_arn = "arn:aws:iam::<ACCOUNT_ID>:role/eks-cluster-role"
+eks_node_iam_role_arn    = "arn:aws:iam::<ACCOUNT_ID>:role/eks-nodegroup-role"
+
+create_vpc = true
+vpc_cidr   = "10.0.0.0/16"
+
+existing_vpc_id             = ""
+existing_private_subnet_ids = []

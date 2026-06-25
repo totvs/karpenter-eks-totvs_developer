@@ -1,0 +1,32 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: api-ecommerce
+  namespace: default
+spec:
+  replicas: 3
+  selector:
+    matchLabels:
+      app: api-ecommerce
+  template:
+    metadata:
+      labels:
+        app: api-ecommerce
+    spec:
+      terminationGracePeriodSeconds: 0
+
+      nodeSelector:
+        node-role: app
+
+      tolerations:
+        - key: node-role
+          value: app
+          effect: NoSchedule
+
+      containers:
+        - name: inflate
+          image: public.ecr.aws/eks-distro/kubernetes/pause:3.7
+          resources:
+            requests:
+              cpu: "1"
+              memory: 512Mi

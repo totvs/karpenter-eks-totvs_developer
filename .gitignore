@@ -1,0 +1,33 @@
+# Terraform — estado e cache local
+**/.terraform/
+*.tfstate
+*.tfstate.backup
+*.tfstate.*.backup
+.terraform.tfstate.lock.info
+
+# Variáveis com dados sensíveis (ARNs, account IDs, etc.)
+# Copie *.tfvars.example para *.tfvars e preencha localmente
+terraform.tfvars
+*.auto.tfvars
+
+# Arquivos de override locais
+override.tf
+override.tf.json
+*_override.tf
+*_override.tf.json
+
+# Planos gerados
+*.tfplan
+
+# Apresentação (arquivos binários/gerados)
+*.pptx
+*.ppt
+apresentacao.html
+
+# OS / Editor
+.DS_Store
+Thumbs.db
+.idea/
+.vscode/
+*.swp
+*.swo

@@ -1,0 +1,11 @@
+aws_region   = "us-east-1"
+environment  = "dev"
+cluster_name = "eks-cluster-karpenter"
+
+karpenter_chart_version = "1.0.6"
+
+# Nome do EC2 Instance Profile para os nodes que o Karpenter provisiona
+node_instance_profile = "eks-nodegroup-role"
+
+# Substitua pelo ARN do role dos nodes na sua conta AWS
+karpenter_node_iam_role_arn = "arn:aws:iam::<ACCOUNT_ID>:role/eks-nodegroup-role"

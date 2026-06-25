@@ -1,0 +1,133 @@
+KARPENTER - VISAO GERAL DA INSTALACAO E CONFIGURACAO
+======================================================
+
+Como o Karpenter e instalado
+------------------------------
+
+A instalacao usa tres camadas combinadas. Nao ha modulo Terraform externo — tudo e codigo proprio.
+
+1. HELM - instala o controller do Karpenter
+   - Arquivo: karpenter-helm.tf
+   - Usa o recurso helm_release do provider Helm do Terraform
+   - Chart: oci://public.ecr.aws/karpenter/karpenter
+   - Namespace: karpenter (criado automaticamente)
+   - Equivalente a rodar: helm install karpenter oci://public.ecr.aws/karpenter/karpenter
+   - Valores customizados em: helm/karpenter/values.yaml.tpl
+     - Nome e endpoint do cluster
+     - Recursos: 1 CPU / 1Gi memoria (request e limit)
+     - nodeSelector: role=system (roda nos nos fixos, nao nos que ele mesmo provisiona)
+     - tolerations: CriticalAddonsOnly
+
+2. KUBECTL_MANIFEST - configura os CRDs apos o Helm subir
+   - Arquivo: karpenter-nodepool.tf
+   - Usa o provider gavinbunney/kubectl
+
+   EC2NodeClass (como criar os nos) - compartilhado por todos os NodePools:
+     - AMI: Amazon Linux 2023 (latest) - suporta amd64 e arm64
+     - Subnets e Security Groups: descobertos via tag karpenter.sh/discovery
+     - Disco: 50Gi, gp3, criptografado, deletado ao terminar instancia
+       * IMPORTANTE: esse disco e o volume raiz da EC2 (OS), nao tem relacao com PVCs
+       * PVCs sao gerenciados pelo EBS CSI Driver e persistem mesmo quando o no e terminado
+
+3. IAM - permissoes via EKS Pod Identity
+   - Arquivo: iam.tf
+   - IAM Role: karpenter-controller (path /eng-roles/)
+   - PermissionsBoundary: roles-boundary-old
+   - Permissoes: EC2 (criar/listar/terminar), SSM, pricing, EKS DescribeCluster, IAM PassRole
+   - Associacao via aws_eks_pod_identity_association (sem IRSA ou anotacoes manuais)
+
+
+Ordem de dependencia
+---------------------
+
+  helm_release.karpenter
+    └── kubectl_manifest.karpenter_ec2_node_class
+          ├── kubectl_manifest.karpenter_node_pool_system
+          ├── kubectl_manifest.karpenter_node_pool_app
+          └── kubectl_manifest.karpenter_node_pool_batch
+                └── aws_eks_pod_identity_association.karpenter
+
+
+NodePools configurados (3 perfis)
+-----------------------------------
+
+SYSTEM - addons e ferramentas de plataforma (monitoring, logging, ingress)
+  Capacity:     on-demand apenas (estabilidade para componentes criticos)
+  Arquitetura:  amd64
+  Familias:     t3, t3a, m5, m6i
+  Tamanhos:     medium, large, xlarge (fixo)
+  Limites:      20 CPU / 80Gi
+  Consolidacao: WhenEmptyOrUnderutilized, 60s
+
+APP - workloads de aplicacao genericas
+  Capacity:     spot + on-demand
+  Arquitetura:  amd64 + arm64 (Graviton para reducao de custo)
+  Familias:     t3, t3a, m5, m5a, m6i, m6a, c5, c6i, c6a
+  Tamanhos:     todos exceto nano, micro, small
+  Limites:      60 CPU / 240Gi
+  Consolidacao: WhenEmptyOrUnderutilized, 30s
+
+BATCH - jobs pesados e workloads tolerantes a interrupcao
+  Capacity:     spot apenas
+  Arquitetura:  amd64 + arm64
+  Familias:     c5, c6i, c6a, m5, m6i, r5, r6i (CPU e memory optimized)
+  Tamanhos:     large, xlarge, 2xlarge, 4xlarge
+  Limites:      80 CPU / 320Gi
+  Consolidacao: WhenEmpty, 30s (evita matar no durante execucao de job)
+
+  Limites totais somados: 160 CPU / 640Gi
+
+
+Como usar os NodePools nos Deployments
+----------------------------------------
+
+Para direcionar um Pod para um NodePool especifico, adicionar no spec do Pod:
+
+  nodeSelector:
+    node-role: app       # system | app | batch
+
+  tolerations:
+    - key: node-role
+      value: app         # system | app | batch
+      effect: NoSchedule
+
+O taint em cada NodePool garante isolamento real — sem a toleracao o Pod nao
+cai no pool mesmo que o nodeSelector aponte para ele.
+
+
+Inflate Deployments (testes de provisionamento)
+-------------------------------------------------
+
+Localizacao: k8s/karpenter/
+
+  inflate-system.yaml  — 1 replica,  1 CPU,  512Mi  → testa nodepool system
+  inflate-app.yaml     — 3 replicas, 1 CPU,  512Mi  → testa nodepool app
+  inflate-batch.yaml   — 2 replicas, 2 CPU,  1Gi    → testa nodepool batch
+
+Comandos para testar:
+
+  # aplicar todos
+  kubectl apply -f k8s/karpenter/
+
+  # acompanhar o Karpenter provisionando os nos
+  kubectl logs -n karpenter -l app.kubernetes.io/name=karpenter -f
+
+  # ver nos sendo criados com o label do pool
+  kubectl get nodes -L node-role -w
+
+  # escalar para forcar mais provisionamento
+  kubectl scale deployment inflate-app --replicas=10
+
+  # limpar tudo
+  kubectl delete -f k8s/karpenter/
+
+
+Para aplicar mudancas
+----------------------
+
+  cd terraform/02-karpenter
+  terraform plan
+  terraform apply
+
+  ATENCAO: se havia um NodePool "default" de versao anterior, remover antes:
+  kubectl delete nodepool default
